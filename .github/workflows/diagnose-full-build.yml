@@ -123,7 +123,9 @@ jobs:
           test -s "$OUTPUT_IPA"
           unzip -tq "$OUTPUT_IPA"
           test -s .theos/obj/FilzaApplySandboxExt.dylib
-          strings .theos/obj/FilzaApplySandboxExt.dylib | grep -F 'FilzaWebDAVResolvePath'
+          # The release dylib is stripped, so function names are not reliable
+          # verification markers. The resolver's private error-domain string is.
+          strings .theos/obj/FilzaApplySandboxExt.dylib | grep -F 'FilzaWebDAVPathResolver'
 
       - name: Upload patched IPA
         uses: actions/upload-artifact@v4
