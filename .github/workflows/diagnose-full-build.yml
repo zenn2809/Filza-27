@@ -101,6 +101,38 @@ jobs:
           tail -n 400 .theos/full-build.log || true
           exit "$rc"
 
+      - name: Download base unsigned IPA
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euxo pipefail
+          mkdir -p .theos/base-ipa
+          gh release download base-ipa --repo "$GITHUB_REPOSITORY" \
+            --pattern '*.ipa' --dir .theos/base-ipa
+          BASE_IPA="$(find .theos/base-ipa -maxdepth 1 -type f -name '*.ipa' -print -quit)"
+          test -n "$BASE_IPA"
+          echo "BASE_IPA=$BASE_IPA" >> "$GITHUB_ENV"
+
+      - name: Package patched MobileHouseArrest IPA
+        shell: bash
+        run: |
+          set -euxo pipefail
+          OUTPUT_IPA="$GITHUB_WORKSPACE/.theos/Filza-27-webdav-fixed.ipa"
+          zsh scripts/build_release_ipa.sh "$BASE_IPA" "$OUTPUT_IPA"
+          test -s "$OUTPUT_IPA"
+          unzip -tq "$OUTPUT_IPA"
+          test -s .theos/obj/FilzaApplySandboxExt.dylib
+          strings .theos/obj/FilzaApplySandboxExt.dylib | grep -F 'FilzaWebDAVResolvePath'
+
+      - name: Upload patched IPA
+        uses: actions/upload-artifact@v4
+        with:
+          name: Filza-27-webdav-fixed-unsigned-arm64
+          path: .theos/Filza-27-webdav-fixed.ipa
+          if-no-files-found: error
+          retention-days: 7
+
       - name: Upload complete build log
         if: always()
         uses: actions/upload-artifact@v4
