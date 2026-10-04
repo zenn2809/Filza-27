@@ -78,6 +78,11 @@ jobs:
           set -euxo pipefail
           bash scripts/build-ssh-stack.sh "$GITHUB_WORKSPACE/Vendor/ssh"
 
+      - name: Build pinned wolfSSH stack
+        run: |
+          set -euxo pipefail
+          bash scripts/build-wolfssh-stack.sh "$GITHUB_WORKSPACE/Vendor/wolfssh"
+
       - name: Capture complete Theos build
         id: full-build
         shell: bash
