@@ -7,6 +7,8 @@
 #import <CommonCrypto/CommonDigest.h>
 
 #import "FilzaDiagnostics.h"
+#import "MCMFilzaIntegration.h"
+#import "WebDAVPathResolver.h"
 #import "GCDWebDAVServer.h"
 #import "GCDWebServerConnection.h"
 #import "GCDWebServerResponse.h"
@@ -39,6 +41,8 @@ static GCDWebDAVServer *FilzaPinnedWebDAVServer = nil;
 static NSString *FilzaWebDAVAuthenticationUsername = nil;
 static NSString *FilzaWebDAVAuthenticationPasswordMD5 = nil;
 static BOOL FilzaWebDAVAuthenticationRequired = NO;
+
+static void FilzaWebDAVWriteStatus(NSString *status);
 
 static void FilzaWebDAVStartAirBrowser(id preferences, SEL selector);
 static void FilzaWebDAVStopAirBrowser(id preferences, SEL selector);
@@ -79,6 +83,7 @@ static BOOL FilzaWebDAVConstantTimeEqual(NSString *left, NSString *right)
 
 - (GCDWebServerResponse *)preflightRequest:(GCDWebServerRequest *)request
 {
+    FilzaWebDAVWriteStatus([NSString stringWithFormat:@"last HTTP method=%@ path=%@ status=preflight", request.method ?: @"(unknown)", request.path ?: @"(none)"]);
     GCDWebServerResponse *upstreamResponse = [super preflightRequest:request];
     FilzaDiagnosticsAppend(@"WebDAV", [NSString stringWithFormat:@"request %@ %@ auth-required=%@",
         request.method ?: @"?", request.path ?: @"/",
@@ -216,10 +221,48 @@ static void FilzaWebDAVWriteStatus(NSString *status)
 {
     NSString *path = [FilzaDiagnosticsDirectory() stringByAppendingPathComponent:@"WebDAVStatus.txt"];
     NSString *timestamp = [NSISO8601DateFormatter.new stringFromDate:NSDate.date];
-    NSString *contents = [NSString stringWithFormat:@"%@\n%@\n",
-                          timestamp ?: NSDate.date.description,
-                          status ?: @"unknown"];
+    NSString *existing = [NSString stringWithContentsOfFile:path encoding:NSUTF8StringEncoding error:nil] ?: @"";
+    NSString *contents = [existing stringByAppendingFormat:@"%@\n%@\n",
+                          timestamp ?: NSDate.date.description, status ?: @"unknown"];
+    if (contents.length > 32768) contents = [contents substringFromIndex:contents.length - 32768];
     [contents writeToFile:path atomically:YES encoding:NSUTF8StringEncoding error:nil];
+}
+
+static NSString *FilzaWebDAVCanonicalPath(NSString *path)
+{
+    NSString *canonical = path.stringByStandardizingPath;
+    if ([canonical isEqualToString:@"/var"] || [canonical hasPrefix:@"/var/"]) canonical = [@"/private" stringByAppendingString:canonical];
+    return canonical.stringByResolvingSymlinksInPath.stringByStandardizingPath;
+}
+
+static BOOL FilzaWebDAVPathIsInside(NSString *path, NSString *root)
+{
+    return [path isEqualToString:root] || [path hasPrefix:[root stringByAppendingString:@"/"]];
+}
+
+static void FilzaWebDAVInstallPathResolver(GCDWebDAVServer *server, NSString *root)
+{
+    NSString *canonicalRoot = FilzaWebDAVCanonicalPath(root);
+    server.pathResolver = ^NSString *(NSString *requestPath, NSError **error) {
+        NSString *resolved = FilzaWebDAVResolvePath(requestPath, canonicalRoot, ^BOOL(NSString *canonicalPath) {
+            return FilzaWebDAVPathIsInside(canonicalPath, canonicalRoot) || MCMFilzaPathHasActiveLease(canonicalPath);
+        }, error);
+        NSString *status = [NSString stringWithFormat:@"resolver enabled mapping=/var/mobile->/private/var/mobile input=%@ resolved=%@ error=%@", requestPath ?: @"(none)", resolved ?: @"(none)", error && *error ? (*error).localizedDescription : @"(none)"];
+        FilzaDiagnosticsAppend(@"WebDAV", status);
+        FilzaWebDAVWriteStatus(status);
+        return resolved;
+    };
+}
+
+static void FilzaWebDAVRunResolverSelfTest(GCDWebDAVServer *server, NSString *root)
+{
+    NSError *error = nil;
+    NSString *resolved = server.pathResolver ? server.pathResolver(@"/", &error) : nil;
+    BOOL isDirectory = NO;
+    BOOL passed = resolved.length && [NSFileManager.defaultManager fileExistsAtPath:resolved isDirectory:&isDirectory] && isDirectory;
+    NSString *status = [NSString stringWithFormat:@"resolver self-test %@ safe-root=%@ resolved=%@ error=%@", passed ? @"passed" : @"failed", root ?: @"(none)", resolved ?: @"(none)", error.localizedDescription ?: @"(none)"];
+    FilzaDiagnosticsAppend(@"WebDAV", status);
+    FilzaWebDAVWriteStatus(status);
 }
 
 static void FilzaWebDAVForceInProcessSettings(id preferences)
@@ -291,6 +334,7 @@ static BOOL FilzaWebDAVStartPinnedServer(id preferences)
         server = [[GCDWebDAVServer alloc] initWithUploadDirectory:root];
     }
     server.allowHiddenItems = YES;
+    FilzaWebDAVInstallPathResolver(server, root);
 
     NSMutableDictionary<NSString *, id> *options = [@{
         GCDWebServerOption_Port: @(port),
@@ -317,9 +361,10 @@ static BOOL FilzaWebDAVStartPinnedServer(id preferences)
 
     FilzaPinnedWebDAVServer = server;
     FilzaWebDAVAssignServer(preferences, server);
-    FilzaDiagnosticsAppend(@"WebDAV",
-                           [NSString stringWithFormat:@"pinned complete WebDAV server listening root=%@ url=%@ auth=%@",
-                            root, server.serverURL ?: @"unavailable", security ? @"YES" : @"NO"]);
+    NSString *startedStatus = [NSString stringWithFormat:@"server started port=%ld url=%@ root=%@ resolver=enabled mapping=/var/mobile->/private/var/mobile auth=%@", (long)port, server.serverURL ?: @"unavailable", root, security ? @"YES" : @"NO"];
+    FilzaDiagnosticsAppend(@"WebDAV", startedStatus);
+    FilzaWebDAVWriteStatus(startedStatus);
+    FilzaWebDAVRunResolverSelfTest(server, root);
     return YES;
 }
 

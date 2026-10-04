@@ -30,6 +30,7 @@
 NS_ASSUME_NONNULL_BEGIN
 
 @class GCDWebDAVServer;
+typedef NSString* _Nullable (^GCDWebDAVPathResolver)(NSString* requestPath, NSError** error);
 
 /**
  *  Delegate methods for GCDWebDAVServer.
@@ -104,6 +105,9 @@ NS_ASSUME_NONNULL_BEGIN
  *  The default value is NO.
  */
 @property(nonatomic) BOOL allowHiddenItems;
+
+/** Resolves every request and Destination path before filesystem access. */
+@property(nonatomic, copy, nullable) GCDWebDAVPathResolver pathResolver;
 
 /**
  *  This method is the designated initializer for the class.
