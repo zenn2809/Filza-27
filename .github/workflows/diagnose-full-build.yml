@@ -119,7 +119,7 @@ jobs:
         run: |
           set -euxo pipefail
           OUTPUT_IPA="$GITHUB_WORKSPACE/.theos/Filza-27-webdav-fixed.ipa"
-          zsh scripts/build_release_ipa.sh "$BASE_IPA" "$OUTPUT_IPA"
+          FILZA_SKIP_BUILD=1 zsh scripts/build_release_ipa.sh "$BASE_IPA" "$OUTPUT_IPA"
           test -s "$OUTPUT_IPA"
           unzip -tq "$OUTPUT_IPA"
           test -s .theos/obj/FilzaApplySandboxExt.dylib

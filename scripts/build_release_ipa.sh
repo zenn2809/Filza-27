@@ -25,11 +25,15 @@ if [[ -n "$CATALOG" ]]; then
 fi
 
 cd "$REPO_ROOT"
-make clean
-make package FINALPACKAGE=1
+if [[ "${FILZA_SKIP_BUILD:-0}" != "1" ]]; then
+  make clean
+  make package FINALPACKAGE=1
+else
+  echo "Reusing previously verified Theos build (FILZA_SKIP_BUILD=1)"
+fi
 
 DYLIB="$REPO_ROOT/.theos/obj/FilzaApplySandboxExt.dylib"
-[[ -f "$DYLIB" ]] || { echo "built dylib not found: $DYLIB" >&2; exit 70; }
+[[ -s "$DYLIB" ]] || { echo "built dylib not found: $DYLIB" >&2; exit 70; }
 
 # Keep the standalone release path identical to the verified Actions package:
 # stage v2.4 runtime files plus the exact pre-v2.4 YouTubeKit JS resources that
