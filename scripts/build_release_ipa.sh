@@ -35,10 +35,14 @@ fi
 DYLIB="$REPO_ROOT/.theos/obj/FilzaApplySandboxExt.dylib"
 [[ -s "$DYLIB" ]] || { echo "built dylib not found: $DYLIB" >&2; exit 70; }
 
-# Keep the standalone release path identical to the verified Actions package:
-# stage v2.4 runtime files plus the exact pre-v2.4 YouTubeKit JS resources that
-# SignatureSolver resolves from Bundle.main.
+# Stage current ByeTunes runtime files and the separately pinned pre-v2.4
+# YouTubeKit JavaScript resources that SignatureSolver resolves from Bundle.main.
 bash "$REPO_ROOT/scripts/stage-byetunes-resources.sh" "$REPO_ROOT/.theos/byetunes-resources"
+bash "$REPO_ROOT/scripts/stage-byetunes-youtubekit.sh"
+for resource in meriyah.umd.js astring.umd.js yt_ejs_helper.js; do
+  cp "$REPO_ROOT/ThirdParty/byetunes-youtubekit/Generated/Resources/$resource" \
+     "$REPO_ROOT/.theos/byetunes-resources/$resource"
+done
 for resource in AppIconImage.png ByeTunes-Info.plist Config.plist meriyah.umd.js astring.umd.js yt_ejs_helper.js; do
   [[ -s "$REPO_ROOT/.theos/byetunes-resources/$resource" ]] || {
     echo "staged ByeTunes resource missing: $resource" >&2
